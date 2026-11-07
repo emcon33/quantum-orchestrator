@@ -1,0 +1,19 @@
+apiVersion: v2
+name: quantum-orchestrator
+description: Cloud-native orchestration of quantum workloads on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - quantum
+  - kubernetes
+  - operator
+  - braket
+  - azure-quantum
+  - qpu
+home: https://github.com/quantum-orchestrator/quantum-orchestrator
+sources:
+  - https://github.com/quantum-orchestrator/quantum-orchestrator
+maintainers:
+  - name: Quantum Orchestrator Team
+    email: maintainers@quantum-orchestrator.io

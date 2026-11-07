@@ -1,0 +1,57 @@
+# Hybrid VQE job on AWS Braket — classical optimiser in ECR, QPU on IonQ
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumJob
+metadata:
+  name: vqe-hybrid-braket
+  labels:
+    example: hybrid
+spec:
+  circuit:
+    inline: |
+      OPENQASM 3.0;
+      include "stdgates.inc";
+      qubit[2] q;
+      bit[2] c;
+      x q[0];
+      rx(theta[0]) q[0];
+      rx(theta[1]) q[1];
+      cx q[0], q[1];
+      rz(theta[2]) q[1];
+      cx q[0], q[1];
+      measure q[0] -> c[0];
+      measure q[1] -> c[1];
+    format: openqasm3
+  target:
+    provider: aws-braket
+    device: ionq.harmony
+    simulator: false
+  shots: 4096
+  hybrid:
+    image: ghcr.io/quantum-orchestrator/vqe-optimizer:0.1.0
+    entrypoint:
+      - python
+      - -m
+      - vqe_optimizer
+      - --circuit
+      - /tmp/circuit.qasm
+      - --iterations
+      - "100"
+      - --optimizer
+      - cobyla
+    env:
+      - name: LEARNING_RATE
+        value: "0.01"
+    resources:
+      limits:
+        cpu: "2"
+        memory: 4Gi
+      requests:
+        cpu: "1"
+        memory: 2Gi
+  credential:
+    secretRef:
+      name: braket-creds
+  result:
+    backend: s3
+    bucket: my-quantum-results
+    prefix: vqe-hybrid/

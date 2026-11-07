@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "quantum-orchestrator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "quantum-orchestrator.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+    - name: health
+      port: {{ .Values.health.port }}
+      targetPort: health
+      protocol: TCP
+  selector:
+    {{- include "quantum-orchestrator.selectorLabels" . | nindent 4 }}

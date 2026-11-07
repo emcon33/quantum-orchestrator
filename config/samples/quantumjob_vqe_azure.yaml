@@ -1,0 +1,48 @@
+# VQE on Azure Quantum (H2 molecule) — requires Azure Quantum workspace
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumJob
+metadata:
+  name: vqe-h2-azure
+  labels:
+    example: vqe
+spec:
+  circuit:
+    inline: |
+      OPENQASM 3.0;
+      include "stdgates.inc";
+      qubit[2] q;
+      bit[2] c;
+      // Hartree-Fock initial state
+      x q[0];
+      // Parameterized ansatz
+      rx(theta[0]) q[0];
+      rx(theta[1]) q[1];
+      cx q[0], q[1];
+      rz(theta[2]) q[1];
+      cx q[0], q[1];
+      rx(theta[3]) q[0];
+      rx(theta[4]) q[1];
+      measure q[0] -> c[0];
+      measure q[1] -> c[1];
+    format: openqasm3
+  target:
+    provider: azure-quantum
+    device: ionq.simulator
+    simulator: true
+  shots: 2048
+  parameters:
+    theta[0]: "0.5"
+    theta[1]: "0.3"
+    theta[2]: "0.7"
+    theta[3]: "0.2"
+    theta[4]: "0.4"
+  credential:
+    secretRef:
+      name: azure-quantum-creds
+  scheduling:
+    queue: research
+    retries: 5
+  result:
+    backend: azure-blob
+    bucket: quantum-results
+    prefix: vqe-h2/

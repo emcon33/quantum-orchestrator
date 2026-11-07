@@ -1,0 +1,15 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.5
+
+# Quantum SDKs (optional extras)
+# qbraid>=0.11
+# qbraid-qir>=0.3
+# qiskit>=1.0
+# cirq>=1.2
+# pennylane>=0.36
+# pyquil>=3.25
+
+# For QIR compilation (Azure Integrated Hybrid)
+# qsharp-compiler (via qsharp package)
+# qsharp>=0.24

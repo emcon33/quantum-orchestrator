@@ -1,0 +1,32 @@
+Quantum Orchestrator {{ .Chart.AppVersion }} has been deployed.
+
+Check the operator status:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/name=quantum-orchestrator
+
+Submit a test job:
+  kubectl apply -f - <<'YAML'
+  apiVersion: quantum.orchestrator.io/v1alpha1
+  kind: QuantumJob
+  metadata:
+    name: hello-quantum
+  spec:
+    circuit: |
+      OPENQASM 3.0;
+      include "stdgates.inc";
+      qubit[1] q;
+      bit[1] c;
+      h q[0];
+      measure q[0] -> c[0];
+    target:
+      provider: local
+      device: aer
+      simulator: true
+    shots: 1024
+    credential:
+      secretRef:
+        name: quantum-creds
+  YAML
+
+Monitor:
+  kubectl -n {{ .Release.Namespace }} get quantumjobs
+  kubectl -n {{ .Release.Namespace }} get quantumjobs hello-quantum -o yaml

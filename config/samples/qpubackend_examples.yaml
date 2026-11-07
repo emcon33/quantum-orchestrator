@@ -1,0 +1,81 @@
+# QPUBackend inventory examples
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: braket-sv1
+  labels:
+    provider: aws-braket
+spec:
+  provider: aws-braket
+  deviceId: sv1
+  qubits: 34
+  gateSet: ["H", "CX", "RZ", "RX", "RY", "X", "Y", "Z", "I", "S", "SDG", "T", "TDG"]
+  availability: on-demand
+  cost:
+    billing: per-shot
+    unitCost: 0.0001
+    currency: USD
+  dashboardUrl: https://console.aws.amazon.com/braket
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: ionq-harmony
+  labels:
+    provider: aws-braket
+spec:
+  provider: aws-braket
+  deviceId: ionq.harmony
+  qubits: 11
+  gateSet: ["H", "GPI", "GPI2", "MS"]
+  errorRates:
+    gate: 0.003
+    readout: 0.001
+    t1: 150.0
+    t2: 80.0
+  availability: on-demand
+  cost:
+    billing: per-minute
+    unitCost: 1.0
+    currency: USD
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: azure-quantinuum-h2
+  labels:
+    provider: azure-quantum
+spec:
+  provider: azure-quantum
+  deviceId: quantinuum.h2-1e
+  qubits: 56
+  gateSet: ["PI", "PI_PHASE", "CNOT", "M"]
+  errorRates:
+    gate: 0.0001
+    readout: 0.001
+    t1: 200.0
+    t2: 120.0
+  availability: subscription
+  cost:
+    billing: per-minute
+    unitCost: 3.5
+    currency: USD
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: local-aer
+  labels:
+    provider: local
+    simulator: "true"
+spec:
+  provider: local
+  deviceId: aer
+  qubits: 30
+  gateSet: ["H", "CX", "RZ", "RX", "RY", "X", "Y", "Z", "I"]
+  availability: on-demand
+  cost:
+    billing: free
+    unitCost: 0.0
+    currency: USD

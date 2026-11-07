@@ -1,0 +1,13 @@
+bin/
+*.test
+*.out
+.DS_Store
+.env
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.venv/
+dist/
+build/
+*.swp
+*.swo

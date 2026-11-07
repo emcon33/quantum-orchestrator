@@ -1,0 +1,92 @@
+# Default values for quantum-orchestrator.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/quantum-orchestrator/operator
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  # AWS IRSA (for Braket)
+  # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/quantum-orchestrator
+  # Azure Workload Identity (for Azure Quantum)
+  # azure.workload.identity/client-id: <client-id>
+
+rbac:
+  create: true
+
+# Transpiler sidecar
+transpiler:
+  enabled: true
+  image:
+    repository: ghcr.io/quantum-orchestrator/transpiler
+    tag: "0.1.0"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Metrics
+metrics:
+  enabled: true
+  port: 8080
+
+# Health probes
+health:
+  port: 8081
+
+# Leader election (for HA)
+leaderElection:
+  enabled: false
+  id: "quantum-orchestrator.leader"
+
+# Resource limits for the operator
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Node selector, tolerations, affinity
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# Prometheus service monitor (for Prometheus Operator)
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+# OpenTelemetry
+otel:
+  enabled: false
+  endpoint: ""
+  headers: {}
+
+# Log level: debug, info, warn, error
+logLevel: info

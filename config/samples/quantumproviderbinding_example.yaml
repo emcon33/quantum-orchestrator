@@ -1,0 +1,40 @@
+# QuantumProviderBinding example — maps a tenant to an AWS account
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumProviderBinding
+metadata:
+  name: team-alpha-aws
+  labels:
+    tenant: team-alpha
+spec:
+  cloud: aws
+  region: us-east-1
+  accountId: "123456789012"
+  credential:
+    secretRef:
+      name: team-alpha-braket-creds
+  namespaces:
+    - team-alpha-quantum
+  tenantSelector:
+    matchLabels:
+      tenant: team-alpha
+---
+# Azure binding for team beta
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumProviderBinding
+metadata:
+  name: team-beta-azure
+  labels:
+    tenant: team-beta
+spec:
+  cloud: azure
+  region: eastus
+  accountId: "sub-00000000-0000-0000-0000-000000000000"
+  workspaceId: team-beta-quantum
+  credential:
+    secretRef:
+      name: team-beta-azure-creds
+  namespaces:
+    - team-beta-quantum
+  tenantSelector:
+    matchLabels:
+      tenant: team-beta
