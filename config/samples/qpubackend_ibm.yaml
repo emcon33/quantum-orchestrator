@@ -1,0 +1,95 @@
+# IBM Quantum processor backends
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: ibm-nighthawk-r2
+  labels:
+    provider: ibm
+    processor: nighthawk
+    revision: r2
+spec:
+  provider: ibm
+  deviceId: ibm_nighthawk_r2
+  qubits: 120
+  gateSet: ["H", "CX", "RZ", "RX", "RY", "X", "Y", "Z", "I", "S", "T", "TOFFOLI"]
+  errorRates:
+    gate: 0.001
+    readout: 0.003
+    t1: 100.0
+    t2: 60.0
+  availability: on-demand
+  cost:
+    billing: per-use
+    unitCost: 0.0
+    currency: USD
+  dashboardUrl: "https://quantum.cloud.ibm.com"
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: ibm-nighthawk-r1
+  labels:
+    provider: ibm
+    processor: nighthawk
+    revision: r1
+spec:
+  provider: ibm
+  deviceId: ibm_nighthawk_r1
+  qubits: 120
+  gateSet: ["H", "CX", "RZ", "RX", "RY", "X", "Y", "Z", "I", "S", "T"]
+  errorRates:
+    gate: 0.0015
+    readout: 0.005
+    t1: 80.0
+    t2: 50.0
+  availability: on-demand
+  cost:
+    billing: per-use
+    unitCost: 0.0
+    currency: USD
+  dashboardUrl: "https://quantum.cloud.ibm.com"
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: ibm-heron-r3
+  labels:
+    provider: ibm
+    processor: heron
+    revision: r3
+spec:
+  provider: ibm
+  deviceId: ibm_heron_r3
+  qubits: 156
+  gateSet: ["H", "CX", "RZ", "RX", "RY", "X", "Y", "Z", "I", "S", "T", "TOFFOLI", "ECR"]
+  errorRates:
+    gate: 0.0008
+    readout: 0.002
+    t1: 120.0
+    t2: 70.0
+  availability: on-demand
+  cost:
+    billing: per-use
+    unitCost: 0.0
+    currency: USD
+  dashboardUrl: "https://quantum.cloud.ibm.com"
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: ibm-starling
+  labels:
+    provider: ibm
+    processor: starling
+    status: upcoming
+spec:
+  provider: ibm
+  deviceId: ibm_starling
+  qubits: 0  # logical qubits; not yet available (2029 target)
+  availability: reserved
+  cost:
+    billing: per-use
+    unitCost: 0.0
+    currency: USD
+  dashboardUrl: "https://quantum.cloud.ibm.com"

@@ -50,7 +50,7 @@ app = FastAPI(
 
 class CircuitInput(BaseModel):
     """Input circuit in any supported format."""
-    format: str  # "qasm3", "qir", "qiskit", "cirq", "pennylane", "quil", "qsharp", "cudaq"
+    format: str  # "qasm3", "qir", "qiskit", "cirq", "pennylane", "quil", "qsharp", "cudaq", "pbc", "clifford-t"
     source: str  # The circuit source (string or base64)
 
 

@@ -8,6 +8,7 @@
 | Diego Santos | @dsantos-quantum | Rigetti Computing |
 | Emma Liu | @emmal-quantum | Independent |
 | Frank Torres | @ftorres-nvidia | NVIDIA |
+| Grace Kim | @gkim-quantum | IBM Research |
 
 ## Emeritus
 

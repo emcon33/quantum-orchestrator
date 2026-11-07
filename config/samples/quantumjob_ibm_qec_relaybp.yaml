@@ -1,0 +1,51 @@
+# Real-time QEC on Nighthawk r2 with RelayBP decoder (AMD FPGA)
+# Demonstrates the ORNL + IBM + AMD co-design platform pattern:
+#   IBM Nighthawk r2 QPU + AMD MI355X GPU + 5th Gen EPYC CPU
+#   RelayBP decoder on FPGA for microsecond-latency syndrome decoding
+#
+# Current IBM QEC record: 70 logical qubits, 438 hard operations
+# Target (DOE Quantum Genesis): 100 logical qubits, 100K hard ops by 2028
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumJob
+metadata:
+  name: qec-relaybp-nighthawk
+  labels:
+    provider: ibm
+    qec: relaybp
+    hpc: ornl-co-design
+spec:
+  target:
+    provider: ibm
+    device: ibm_nighthawk_r2
+  shots: 100000  # QEC cycles
+  credential:
+    secretRef:
+      name: ibm-quantum-creds
+  ibm:
+    processor: nighthawk
+    revision: r2
+    qec:
+      decoder: relaybp
+      decoderHardware: fpga    # AMD FPGA
+      code: surface
+      distance: 5
+      logicalQubits: 70
+      hardOperations: 438
+      realTime: true
+      algorithmAware: true
+      hardwareAwareCompilation: true
+    hpCoDesign:
+      enabled: true
+      gpu: mi355x              # AMD Instinct MI355X
+      cpu: epyc-5th-gen        # 5th Gen AMD EPYC
+      gpuNodes: 2
+      interconnect: roce
+      targetLatencyUs: 5
+      profile: qec-decoding
+    errorMitigation:
+      strategy: dynamic-circuits
+      hpcPowered: true
+  result:
+    backend: s3
+    bucket: my-quantum-results
+    prefix: qec-relaybp/

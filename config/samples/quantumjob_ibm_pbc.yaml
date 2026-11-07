@@ -1,0 +1,54 @@
+# Pauli-based computation (PBC) on IBM Heron r3
+# Qiskit v2.5 PBC compilation pipeline
+# Heron r3: 156Q, heavy-hexagonal, 330K CLOPS
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumJob
+metadata:
+  name: pbc-heron-r3
+  labels:
+    provider: ibm
+    processor: heron
+    compilation: pbc
+spec:
+  circuit:
+    inline: |
+      OPENQASM 3.0;
+      include "stdgasm.inc";
+      // 20-qubit Clifford+T circuit
+      qubit[20] q;
+      bit[20] c;
+      h q[0];
+      cx q[0], q[1];
+      t q[2];
+      cx q[1], q[2];
+      tdg q[2];
+      cx q[1], q[2];
+      t q[2];
+      cx q[0], q[2];
+      // ... 20 qubits of Clifford+T ...
+      measure q[0] -> c[0];
+      measure q[1] -> c[1];
+      measure q[2] -> c[2];
+    format: openqasm3
+  target:
+    provider: ibm
+    device: ibm_heron_r3
+  shots: 4096
+  credential:
+    secretRef:
+      name: ibm-quantum-creds
+  ibm:
+    processor: heron
+    revision: r3
+    qiskit:
+      version: "2.5"
+      compilationMode: pbc
+      useCAPI: true
+      presetPassManager: pbc
+    errorMitigation:
+      strategy: probabilistic-error-mitigation
+      hpcPowered: true
+  result:
+    backend: s3
+    bucket: my-quantum-results
+    prefix: pbc-heron/

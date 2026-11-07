@@ -105,6 +105,7 @@ kubectl logs -f quantumjob/bell-state
 | IonQ (direct) | OpenQASM 2/3 | — | API key |
 | Rigetti (direct) | Quil, QIR, OpenQASM | — | API key |
 | Quantinuum (direct) | QIR, OpenQASM | — | API key |
+| IBM Quantum | OpenQASM 3, Qiskit v2.5, PBC, Clifford+T | RelayBP QEC, HPC error mitigation, dynamic circuits | IBM Cloud API |
 | NVIDIA CUDA-Q | OpenQASM 3, CUDA-Q kernels | CUDA-Q → Braket, GPU sim | nvidia.com/gpu |
 | NVIDIA cuQuantum | OpenQASM 3, Qiskit, Cirq, PennyLane, Qibo | Multi-GPU / Multi-node | nvidia.com/gpu |
 | NVIDIA NVQLink | CUDA-Q, CUDA-QX QEC | Real-time QEC (QPU + GPU) | RoCE / RDMA |
@@ -160,8 +161,21 @@ This project integrates with:
 - **Quantum SDKs**: [Qiskit](https://github.com/Qiskit/qiskit), [Cirq](https://github.com/quantumlib/Cirq), [PennyLane](https://github.com/PennyAI/PennyLane), [QDK](https://github.com/microsoft/quantum), [PyQuil](https://github.com/rigetti/pyquil)
 - **Cross-platform**: [qBraid](https://github.com/qBraid/qBraid), [OpenQASM](https://github.com/openqasm/openqasm), [QIR](https://github.com/qir-alliance/qir)
 - **NVIDIA**: [CUDA-Q](https://nvidia.github.io/cuda-quantum/), [cuQuantum](https://github.com/NVIDIA/cuQuantum), [CUDA-QX](https://nvidia.github.io/cudaqx/), [NVQLink](https://www.nvidia.com/en-us/solutions/quantum-computing/nvqlink/)
+- **IBM**: [Qiskit](https://github.com/Qiskit/qiskit) (v2.5, C API, PBC), [IBM Quantum Compute Service](https://quantum.cloud.ibm.com), [RelayBP](https://www.ibm.com/quantum/blog/qdc-2025), [Qiskit Algorithms](https://github.com/qiskit-community/qiskit-algorithms)
 - **Observability**: [OpenTelemetry](https://github.com/open-telemetry/opentelemetry-specification), [Prometheus](https://github.com/prometheus/prometheus), [Grafana](https://github.com/grafana/grafana)
 - **Secrets**: [External Secrets Operator](https://github.com/external-secrets/external-secrets)
+
+## IBM Integration
+
+| Component | Description |
+|-----------|-------------|
+| Qiskit v2.5 | Quantum SDK (Python + C API), PBC, Clifford+T, dynamic circuits |
+| Nighthawk r2 | 120Q + 458 physical, square lattice, high-speed reset |
+| Heron r3 | 156Q, heavy-hexagonal, 330K CLOPS |
+| Starling | Fault-tolerant QC (2029 target), 100+ logical qubits |
+| RelayBP | Real-time QEC decoder (AMD FPGA) |
+| HPC Error Mitigation | 100x cost reduction, GPU/CPU accelerated |
+| ORNL+IBM+AMD | QEC co-design platform (Nighthawk + MI355X + EPYC) |
 
 ## NVIDIA Integration
 
