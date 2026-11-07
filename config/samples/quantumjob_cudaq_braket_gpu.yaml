@@ -1,0 +1,43 @@
+# CUDA-Q hybrid: GPU simulation in-cluster + QPU via AWS Braket
+# The classical component runs on a GPU node; the QPU is accessed
+# via Braket (IonQ, Rigetti, IQM, QuEra) — no direct provider contract.
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumJob
+metadata:
+  name: cudaq-braket-hybrid
+  labels:
+    provider: nvidia
+    example: hybrid-braket
+spec:
+  target:
+    provider: nvidia
+    device: braket
+  shots: 2048
+  credential:
+    secretRef:
+      name: braket-creds  # AWS IAM / IRSA
+  nvidia:
+    sdk: cudaq
+    cudaqTarget: "braket"
+    cudaqKernel:
+      language: python
+      inline: |
+        import cudaq
+        device = "arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1-25Q"
+        cudaq.set_target("braket", machine=device)
+        @cudaq.kernel
+        def vqe_kernel():
+            q = cudaq.qvector(2)
+            h(q[0])
+            x.ctrl(q[0], q[1])
+            mz(q)
+        result = cudaq.sample(vqe_kernel, shots_count=2048)
+        return dict(result.items())
+    gpu:
+      model: h100
+      count: 1
+      minMemoryGiB: 80
+  result:
+    backend: s3
+    bucket: my-quantum-results
+    prefix: cudaq-braket/

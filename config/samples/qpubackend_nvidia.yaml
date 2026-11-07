@@ -1,0 +1,63 @@
+# NVIDIA GPU backends for in-cluster quantum workloads
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: nvidia-cudaq-a100
+  labels:
+    provider: nvidia
+    gpu: a100
+spec:
+  provider: nvidia
+  deviceId: nvidia
+  qubits: 25
+  gateSet: ["H", "CX", "RZ", "RX", "RY", "X", "Y", "Z", "I", "S", "T"]
+  availability: on-demand
+  cost:
+    billing: per-minute
+    unitCost: 2.0
+    currency: USD
+  dashboardUrl: "https://console.nvidia.com"
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: nvidia-cuquantum-h100
+  labels:
+    provider: nvidia-cuquantum
+    gpu: h100
+spec:
+  provider: nvidia-cuquantum
+  deviceId: cuquantum-statevec
+  qubits: 30
+  gateSet: ["H", "CX", "RZ", "RX", "RY", "X", "Y", "Z", "I", "S", "T", "TOFFOLI"]
+  availability: on-demand
+  cost:
+    billing: per-minute
+    unitCost: 3.5
+    currency: USD
+---
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QPUBackend
+metadata:
+  name: nvidia-nvqlink-gh200
+  labels:
+    provider: nvidia-nvqlink
+    gpu: gh200
+    qpu: quantinuum
+spec:
+  provider: nvidia-nvqlink
+  deviceId: nvqlink-surface-d7
+  qubits: 98
+  gateSet: ["PI", "PI_PHASE", "CNOT", "M", "RZ", "RX"]
+  errorRates:
+    gate: 0.0001
+    readout: 0.001
+    t1: 200.0
+    t2: 120.0
+  availability: reserved
+  cost:
+    billing: per-minute
+    unitCost: 10.0
+    currency: USD
+  dashboardUrl: "https://quantinuum.com"

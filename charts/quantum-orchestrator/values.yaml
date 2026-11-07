@@ -36,6 +36,19 @@ transpiler:
       cpu: 500m
       memory: 512Mi
 
+# GPU configuration (for NVIDIA CUDA-Q / cuQuantum workloads)
+gpu:
+  enabled: false
+  # Node selector for GPU nodes
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  # Default GPU model
+  model: a100
+  # Default GPU count per job
+  count: 1
+  # NVIDIA GPU Operator / Device Plugin required
+  # See: https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/
+
 # Metrics
 metrics:
   enabled: true

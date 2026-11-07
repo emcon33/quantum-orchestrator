@@ -1,0 +1,43 @@
+# Real-time QEC via NVQLink: Quantinuum QPU + NVIDIA GH200 GPU
+# Demonstrates the NVQLink Logical QPU model:
+#   QPU (Quantinuum) + QSC (RFSoC) + GPU (GH200) via RoCE
+#   cudaq::device_call for microsecond-latency syndrome decoding
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumJob
+metadata:
+  name: nvqlink-qec-surface-code
+  labels:
+    provider: nvidia-nvqlink
+    example: qec
+spec:
+  target:
+    provider: nvidia-nvqlink
+    device: nvqlink-surface-d7
+  shots: 100000  # QEC cycles
+  credential:
+    secretRef:
+      name: nvqlink-creds
+  nvidia:
+    sdk: cudaqx
+    qec:
+      decoder: nv-qldpc-decoder
+      code: surface
+      distance: 7
+      cycles: 100000
+      iterations: 50
+      historyDepth: 20
+      realTime: true
+    nvqlinkRef:
+      name: surface-code-d7
+    gpu:
+      model: gh200
+      count: 1
+      minMemoryGiB: 100
+      features:
+        - tensor-core
+        - nvlink
+        - fp64
+  result:
+    backend: minio
+    bucket: quantum-results
+    prefix: qec-surface-d7/

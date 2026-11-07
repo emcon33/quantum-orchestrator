@@ -7,6 +7,7 @@
 | Clara Müller | @cmueller-dev | Microsoft |
 | Diego Santos | @dsantos-quantum | Rigetti Computing |
 | Emma Liu | @emmal-quantum | Independent |
+| Frank Torres | @ftorres-nvidia | NVIDIA |
 
 ## Emeritus
 

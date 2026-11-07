@@ -1,0 +1,43 @@
+# NVQLink Logical QPU: Quantinuum Helios + NVIDIA GH200 via RoCE
+# This is the "hardware" CRD — the QuantumJob above references it.
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: NVQLinkLogicalQPU
+metadata:
+  name: surface-code-d7
+  labels:
+    provider: nvidia-nvqlink
+    qpu: quantinuum
+spec:
+  qpu:
+    provider: quantinuum
+    deviceId: quantinuum.helios
+    physicalQubits: 98
+    qpuType: trapped-ion
+    qscType: fpga
+  realTimeHost:
+    gpu: gh200
+    gpus: 1
+    cpuArch: arm64
+    memoryGiB: 128
+    image: nvcr.io/nvidia/cuda-quantum:latest
+  interconnect:
+    technology: roce
+    targetLatencyUs: 5
+    bandwidthGbps: 200
+    nic: connectx-7
+    network:
+      vlan: 100
+      subnet: "10.100.0.0/24"
+      mtu: 9000
+  qecDecoder: nv-qldpc-decoder
+  qecParameters:
+    code: surface
+    distance: 7
+    cycles: 100000
+    maxIterations: 50
+    historyDepth: 20
+    adaptiveConvergence: true
+  credential:
+    secretRef:
+      name: quantinuum-helios-creds
+  replicas: 1

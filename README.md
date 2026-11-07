@@ -105,6 +105,9 @@ kubectl logs -f quantumjob/bell-state
 | IonQ (direct) | OpenQASM 2/3 | — | API key |
 | Rigetti (direct) | Quil, QIR, OpenQASM | — | API key |
 | Quantinuum (direct) | QIR, OpenQASM | — | API key |
+| NVIDIA CUDA-Q | OpenQASM 3, CUDA-Q kernels | CUDA-Q → Braket, GPU sim | nvidia.com/gpu |
+| NVIDIA cuQuantum | OpenQASM 3, Qiskit, Cirq, PennyLane, Qibo | Multi-GPU / Multi-node | nvidia.com/gpu |
+| NVIDIA NVQLink | CUDA-Q, CUDA-QX QEC | Real-time QEC (QPU + GPU) | RoCE / RDMA |
 | Local (simulator) | OpenQASM 3 | — | — |
 
 ## Development
@@ -156,8 +159,18 @@ This project integrates with:
 - **Scheduling**: [Kueue](https://github.com/kubernetes-sigs/kueue), [Argo Workflows](https://github.com/argoproj/argo-workflows)
 - **Quantum SDKs**: [Qiskit](https://github.com/Qiskit/qiskit), [Cirq](https://github.com/quantumlib/Cirq), [PennyLane](https://github.com/PennyAI/PennyLane), [QDK](https://github.com/microsoft/quantum), [PyQuil](https://github.com/rigetti/pyquil)
 - **Cross-platform**: [qBraid](https://github.com/qBraid/qBraid), [OpenQASM](https://github.com/openqasm/openqasm), [QIR](https://github.com/qir-alliance/qir)
+- **NVIDIA**: [CUDA-Q](https://nvidia.github.io/cuda-quantum/), [cuQuantum](https://github.com/NVIDIA/cuQuantum), [CUDA-QX](https://nvidia.github.io/cudaqx/), [NVQLink](https://www.nvidia.com/en-us/solutions/quantum-computing/nvqlink/)
 - **Observability**: [OpenTelemetry](https://github.com/open-telemetry/opentelemetry-specification), [Prometheus](https://github.com/prometheus/prometheus), [Grafana](https://github.com/grafana/grafana)
 - **Secrets**: [External Secrets Operator](https://github.com/external-secrets/external-secrets)
+
+## NVIDIA Integration
+
+| Component | Description |
+|-----------|-------------|
+| CUDA-Q | Quantum SDK (C++/Python) with GPU-accelerated simulators, Braket integration |
+| cuQuantum | GPU libraries: cuStateVec, cuDensityMat, cuTensorNet, cuPauliProp, cuStabilizer |
+| CUDA-QX | Quantum error correction: BP+OSD, tensor-network, nv-qldpc decoders |
+| NVQLink | Real-time QPU-GPU coupling (RoCE/RDMA), cudaq::device_call, Logical QPU model |
 
 ## Prior Art
 

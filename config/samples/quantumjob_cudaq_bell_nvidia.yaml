@@ -1,0 +1,40 @@
+# Bell state using NVIDIA CUDA-Q on an in-cluster GPU
+apiVersion: quantum.orchestrator.io/v1alpha1
+kind: QuantumJob
+metadata:
+  name: cudaq-bell-nvidia
+  labels:
+    provider: nvidia
+    example: cudaq-bell
+spec:
+  target:
+    provider: nvidia
+    device: nvidia
+    simulator: true
+  shots: 1024
+  credential:
+    secretRef:
+      name: nvidia-gpu-creds
+  nvidia:
+    sdk: cudaq
+    cudaqTarget: "nvidia"
+    cudaqKernel:
+      language: python
+      inline: |
+        import cudaq
+        @cudaq.kernel
+        def bell():
+            q = cudaq.qvector(2)
+            h(q[0])
+            x.ctrl(q[0], q[1])
+            mz(q)
+        result = cudaq.sample(bell, shots_count=1024)
+        print(dict(result.items()))
+    gpu:
+      model: a100
+      count: 1
+      minMemoryGiB: 40
+  result:
+    backend: minio
+    bucket: quantum-results
+    prefix: cudaq-bell/

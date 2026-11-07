@@ -18,3 +18,6 @@ var (
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+// NOTE: NVQLinkLogicalQPU and NVIDIASpec are registered in their own files.
+// See nvqlink_types.go and nvidia_extensions.go.
