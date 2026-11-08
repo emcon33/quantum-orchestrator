@@ -153,6 +153,22 @@ quantum-orchestrator/
 └── .github/               # CI/CD workflows
 ```
 
+## AI Augmented by Quantum Computing
+
+Seven production use cases where QPUs augment classical AI workloads:
+
+| Use Case | Quantum Role | AI Role | Provider |
+|----------|-------------|---------|----------|
+| Quantum ML (QML) | Feature maps, variational layers | Optimizer, data pipeline | IBM / NVIDIA / AWS |
+| QAOA for AI optimization | Solution space exploration | Parameter adjustment | NVIDIA / IBM |
+| Quantum chemistry → drug discovery | Molecular Hamiltonian | Property prediction | IBM / Azure |
+| AI-assisted QEC | Syndrome generation | Real-time decoding (AI) | IBM / NVIDIA |
+| Quantum generative AI | Distribution representation | Training loop | NVIDIA |
+| AI for circuit optimization | Simulation (reward) | RL / evolutionary search | NVIDIA / IBM |
+| Quantum linear algebra | HHL, QPCA | Model training | IBM Starling (FT) |
+
+Full details with sample YAML configs: [docs/ai-quantum.md](docs/ai-quantum.md)
+
 ## Ecosystem
 
 This project integrates with:
