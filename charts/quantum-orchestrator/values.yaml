@@ -36,6 +36,35 @@ transpiler:
       cpu: 500m
       memory: 512Mi
 
+# OpenShift configuration
+openshift:
+  # Enable OpenShift Console Plugin
+  consolePlugin:
+    enabled: false
+    # routePath: /
+  # Enable OLM bundle (for OperatorHub)
+  olm:
+    enabled: false
+    # packageManifest: quantum-orchestrator
+  # GPU Operator (NVIDIA)
+  gpuOperator:
+    nvidia:
+      enabled: true
+      # MIG mode for multi-tenant GPU partitioning
+      mig: false
+    amd:
+      enabled: false
+      # ROCm for AMD MI355X
+      rocm: false
+  # RDMA for NVQLink / QEC interconnect
+  rdma:
+    enabled: false
+    # Multus NetworkAttachmentDefinition name
+    networkAttachment: nvqlink-rdma
+  # Node Feature Discovery
+  nodeFeatureDiscovery:
+    enabled: true
+
 # IBM Cloud configuration (for IBM Quantum workloads)
 ibm:
   # Region: us-east (default, supports Open Plan) or eu-south

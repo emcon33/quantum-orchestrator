@@ -578,6 +578,66 @@ spec:
 | 6 | AI for circuit optimization | Simulation (reward signal) | RL / evolutionary search | NVIDIA / IBM |
 | 7 | Quantum linear algebra | HHL, QPCA, QSVM | Model training | IBM Starling (FT) |
 
+## OpenShift AI Integration
+
+All seven use cases integrate with the Red Hat OpenShift AI platform:
+
+| OpenShift AI Component | Quantum Integration |
+|------------------------|-------------------|
+| **Workbenches** | Jupyter notebooks with Qiskit, CUDA-Q, cuQuantum preloaded. Submit QuantumJobs directly from a notebook via the K8s API. |
+| **Kubeflow Pipelines 2.0** | Quantum jobs as pipeline steps. Example: VQE (QPU) → property prediction (GPU) → model training (Kubeflow Trainer) → model serving (vLLM). |
+| **Kubeflow Trainer v2** | Classical side of hybrid workloads. TrainJob API for distributed GPU training alongside QPU jobs. |
+| **Model Serving** | Serve AI models trained on quantum-enhanced data. Multi-node GPU for large models. |
+| **Hardware Profiles** | Target specific GPUs (A100, H100, MI355X) for quantum workloads. |
+| **OpenShift Console Plugin** | Quantum Jobs, QPU Backends, QEC Status as custom console pages. |
+
+### Example: OpenShift AI Pipeline with Quantum Step
+
+```python
+# Kubeflow Pipelines 2.0 pipeline
+# Step 1: Classical data prep (GPU)
+# Step 2: VQE on Nighthawk (QPU) ← Quantum Orchestrator
+# Step 3: Property prediction (GPU)
+# Step 4: Model training (Kubeflow Trainer v2)
+# Step 5: Model serving (vLLM)
+
+from kfp import dsl
+from kfp.components import func_to_container_op
+
+@dsl.pipeline(name="quantum-drug-discovery")
+def pipeline():
+    # Step 1: Load molecule data
+    data = load_molecules("h2o", "nh3", "lih")
+
+    # Step 2: VQE on IBM Nighthawk (quantum step)
+    # Submit a QuantumJob CRD via the K8s API
+    energies = quantum_vqe(
+        molecules=data,
+        qpu="ibm_nighthawk_r2",
+        ansatz="uccsd",
+        shots=8192,
+        error_mitigation="zero-noise",
+    )
+
+    # Step 3: Property prediction (classical AI)
+    properties = predict_properties(energies, model="gcn-v2")
+
+    # Step 4: Train drug discovery model
+    model = train_model(
+        features=properties,
+        framework="pytorch",
+        gpus=4,
+        trainer="kubeflow-trainer-v2",
+    )
+
+    # Step 5: Serve the model
+    serve_model(model, runtime="vllm", replicas=2)
+```
+
+The `quantum_vqe` component creates a `QuantumJob` CRD, waits for
+completion, and returns the energies. Kueue co-schedules the GPU
+(classical steps) and QPU (quantum step) resources.
+
 ## Scheduling These Workloads
 
 All use cases benefit from the operator's Kueue integration:

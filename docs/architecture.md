@@ -154,6 +154,132 @@ kubectl create secret docker-registry ngc-pull-secret \
   -n quantum-system
 ```
 
+## OpenShift AI Integration
+
+The Quantum Orchestrator integrates natively with the Red Hat OpenShift AI
+platform, enabling quantum workloads to be scheduled alongside AI/ML workloads
+on the same GPU infrastructure.
+
+### OpenShift AI Components Used
+
+| Component | Role in Quantum Workloads |
+|-----------|--------------------------|
+| **Workbenches** | Jupyter notebooks preloaded with Qiskit, CUDA-Q, cuQuantum, PennyLane. Self-service quantum development. |
+| **Kubeflow Pipelines 2.0** | AI pipelines with reusable components. Quantum jobs as pipeline steps (e.g. VQE → property prediction → ranking). |
+| **Kubeflow Trainer v2** | Distributed training with TrainJob API. Classical side of hybrid quantum-classical workloads. |
+| **Model Serving** | vLLM, custom runtimes, multi-node GPU. Serve AI models trained on quantum-enhanced data. |
+| **Hardware Profiles** | Target specific GPU types (NVIDIA A100/H100, AMD MI355X) for quantum workloads. |
+| **NVIDIA GPU Operator** | `nvidia.com/gpu` resources, GPU monitoring, MIG partitioning. |
+| **AMD GPU Operator** | `amd.com/gpu` resources for AMD MI355X (IBM co-design pattern). |
+
+### OpenShift Platform Components
+
+| Component | Role |
+|-----------|------|
+| **OLM / OperatorHub** | Install, upgrade, and manage the Quantum Orchestrator operator. |
+| **Console Plugin** | Custom pages in the OpenShift Web Console: quantum jobs, QPU backends, QEC status. |
+| **NVIDIA GPU Operator** | GPU device plugin, driver management, MIG, NCCL. |
+| **AMD GPU Operator** | AMD GPU device plugin, ROCm, MI355X support. |
+| **RDMA / Multus** | Low-latency interconnect for NVQLink and IBM QEC co-design. |
+| **Dynamic Accelerator Slicer (DAS)** | GPU partitioning for multi-tenant quantum workloads. |
+| **Node Feature Discovery** | Auto-detect GPU models, RDMA NICs, and accelerator hardware. |
+| **GitOps (Argo CD / Flux)** | Declarative deployment of the operator and configs. |
+| **External Secrets Operator** | Sync IBM Cloud, AWS, Azure credentials from vaults. |
+
+### Integration Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  OpenShift AI Pipeline (Kubeflow Pipelines 2.0)                        │
+│                                                                         │
+│  ┌─────────────┐   ┌──────────────────┐   ┌────────────────────────┐   │
+│  │ Step 1:     │   │ Step 2:          │   │ Step 3:                │   │
+│  │ Data Prep   │──▶│ Quantum Job      │──▶│ Model Training         │   │
+│  │ (GPU)       │   │ (QPU + GPU)      │   │ (Kubeflow Trainer v2)  │   │
+│  │             │   │                  │   │                        │   │
+│  │ Load        │   │ VQE on           │   │ Train AI model         │   │
+│  │ molecule    │   │ Nighthawk r2     │   │ on quantum-enhanced    │   │
+│  │ data        │   │ + AMD MI355X     │   │ data (energy, props)   │   │
+│  └─────────────┘   └──────────────────┘   └────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────┐   ┌──────────────────┐   ┌────────────────────────┐   │
+│  │ Step 4:     │   │ Step 5:          │   │ Step 6:                │   │
+│  │ Evaluation  │──▶│ Model Serving    │──▶│ Monitoring             │   │
+│  │ (GPU)       │   │ (vLLM, multi-    │   │ (Prometheus, OTel,     │   │
+│  │             │   │  node GPU)       │   │  OpenShift Console)    │   │
+│  └─────────────┘   └──────────────────┘   └────────────────────────┘   │
+│                                                                         │
+│  Kueue co-schedules: GPU quotas (AI) + QPU quotas (quantum)            │
+│  Per-tenant isolation via QuantumProviderBinding + Hardware Profiles   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Console Plugin
+
+The Quantum Orchestrator provides an OpenShift Console Plugin that adds:
+
+- **Perspective**: "Quantum Computing" (alongside Admin, Developer, AI)
+- **Pages**: Quantum Jobs, QPU Backends, NVQLink Logical QPUs, QEC Status
+- **Tabs**: Provider, Status, Results, Cost, Logs (on QuantumJob pages)
+- **Actions**: Submit, Cancel, Re-run, Download Results
+
+```yaml
+# ConsolePlugin CR (created by the operator)
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: quantum-orchestrator-plugin
+  namespace: openshift-console
+spec:
+  displayName: Quantum Orchestrator
+  backend:
+    type: Service
+    service:
+      name: quantum-orchestrator-console
+      port: 9001
+      routePath: /
+```
+
+### GPU / Accelerator Scheduling
+
+```yaml
+# OpenShift Hardware Profile for quantum workloads
+apiVersion: console.openshift.io/v1
+kind: HardwareProfile
+metadata:
+  name: quantum-gpu
+spec:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+  gpus:
+    - type: nvidia
+      count: 1
+      minMemoryGiB: 40
+```
+
+### RDMA for NVQLink / QEC
+
+```yaml
+# Multus RDMA network for NVQLink interconnect
+apiVersion: multus-cni.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: nvqlink-rdma
+  namespace: quantum-system
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "net1",
+    "mode": "bridge"
+  }'
+# Pod annotation:
+#   k8s.v1.cni.cncf.io/networks: nvqlink-rdma
+```
+
 ## Data Flow
 
 ```
