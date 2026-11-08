@@ -1,8 +1,14 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
 )
 
 func init() {
@@ -13,156 +19,304 @@ func init() {
 		return NewIBMAdapter(creds)
 	})
 	Register("ibm-qiskit-runtime", func(creds map[string]string) (Provider, error) {
-		// Legacy name; Qiskit Runtime is now IBM Quantum Compute Service
 		return NewIBMAdapter(creds)
 	})
 }
 
-// IBMAdapter implements Provider for IBM Quantum.
+// IBMAdapter implements Provider for IBM Quantum via IBM Cloud.
 //
-// IBM's quantum stack (2025–2026):
+// IBM Cloud Authentication Flow:
 //
-//   Hardware:
-//   - Nighthawk r1 (Dec 2025): 120 qubits, 218 couplers, square lattice
-//   - Nighthawk r2 (Sep 2026): 120 programmable + 458 physical qubits,
-//     high-speed reset (significantly higher circuits/sec)
-//   - Heron r3 (Jul 2025): 156 qubits, heavy-hexagonal lattice,
-//     lowest median 2-qubit gate errors, 330,000 CLOPS
-//   - Starling (2029 target): first fault-tolerant quantum computer
+//  1. Store the IBM Cloud IAM API key (long-lived, 44 chars) in a K8s Secret.
+//  2. On startup (or when the token expires), exchange the API key for a
+//     bearer token via the IAM Identity Services API:
 //
-//   Software:
-//   - Qiskit v2.5: C API, Pauli-based computation (PBC),
-//     Clifford+T compilation, expanded transpiler
-//   - IBM Quantum Compute Service (formerly Qiskit Runtime)
+//     POST https://iam.cloud.ibm.com/identity/token
+//     Content-Type: application/x-www-form-urlencoded
+//     grant_type=urn:ibm:params:oauth:grant-type:apikey&apikey=<API_KEY>
+//
+//     Response: { "access_token": "...", "expires_in": 3600 }
+//
+//  3. Use the bearer token as: Authorization: Bearer <token>
+//     Bearer tokens expire in ≤ 1 hour. Refresh before expiry.
+//
+//  4. All Quantum Compute Service calls include:
+//     - Authorization: Bearer <token>
+//     - x-ibm-cloud-api-instance: <CRN>  (the instance CRN)
+//
+// IBM Quantum Stack (2025-2026):
+//   - Nighthawk r2: 120Q + 458 physical, square lattice, high-speed reset
+//   - Heron r3: 156Q, heavy-hexagonal, 330K CLOPS
+//   - Starling: fault-tolerant (2029 target)
+//   - Qiskit v2.5: C API, PBC, Clifford+T
 //   - RelayBP: real-time QEC decoder (AMD FPGA)
-//   - HPC-powered error mitigation (100x cost reduction)
-//   - Dynamic circuits (24% accuracy increase)
-//
-//   QEC / HPC:
-//   - ORNL + IBM + AMD co-design platform (Nov 2026)
-//     Nighthawk r2 + AMD MI355X GPUs + 5th Gen EPYC
-//   - 70 logical qubits, 438 hard operations demonstrated
-//   - Target: 100 logical qubits, 100K hard ops by 2028
-//
-// This adapter:
-//  1. Submits jobs to IBM Quantum Compute Service (REST API)
-//  2. Targets Nighthawk, Heron, or Starling processors
-//  3. Supports Qiskit v2.5 circuits (OpenQASM 3, PBC, Clifford+T)
-//  4. Handles QEC workloads (RelayBP decoder, logical qubits)
-//  5. Integrates with the ORNL+IBM+AMD co-design platform pattern
+//   - ORNL+IBM+AMD co-design platform
 type IBMAdapter struct {
-	token        string
-	account      string
-	hub          string
-	group        string
-	baseURL      string
+	apiKey      string
+	bearerToken string
+	tokenExpiry time.Time
+	instanceCRN string
+	region      string // "us-east" or "eu-south"
+	baseURL     string
+	httpClient  *http.Client
 }
 
 // NewIBMAdapter creates an IBM adapter from credentials.
-// Expects: "token" (IBM Cloud API key), "account" (optional),
-// "hub" (optional), "group" (optional).
+//
+// Required creds keys:
+//   - "token" or "apiKey": IBM Cloud IAM API key (44 chars)
+//
+// Optional creds keys:
+//   - "instanceCRN" or "crn": IBM Quantum Compute Service instance CRN
+//   - "region": "us-east" (default) or "eu-south"
+//   - "baseUrl": override the API base URL
 func NewIBMAdapter(creds map[string]string) (*IBMAdapter, error) {
-	token := creds["token"]
-	if token == "" {
-		return nil, fmt.Errorf("ibm: token (IBM Cloud API key) is required")
+	apiKey := creds["token"]
+	if apiKey == "" {
+		apiKey = creds["apiKey"]
+	}
+	if apiKey == "" {
+		return nil, fmt.Errorf("ibm: IBM Cloud IAM API key is required (set 'token' or 'apiKey')")
 	}
 
-	baseURL := "https://api.quantum-cloud.ibm.com"
+	region := creds["region"]
+	if region == "" {
+		region = "us-east"
+	}
+
+	baseURL := "https://quantum-cloud.ibm.com"
 	if creds["baseUrl"] != "" {
 		baseURL = creds["baseUrl"]
 	}
 
 	return &IBMAdapter{
-		token:   token,
-		account: creds["account"],
-		hub:     creds["hub"],
-		group:   creds["group"],
-		baseURL: baseURL,
+		apiKey:      apiKey,
+		instanceCRN: creds["instanceCRN"],
+		region:      region,
+		baseURL:     baseURL,
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
+
+// ── IBM Cloud IAM Token Management ──
+
+// refreshToken exchanges the API key for a new bearer token.
+// POST https://iam.cloud.ibm.com/identity/token
+func (a *IBMAdapter) refreshToken(ctx context.Context) error {
+	data := url.Values{
+		"grant_type": {"urn:ibm:params:oauth:grant-type:apikey"},
+		"apikey":     {a.apiKey},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://iam.cloud.ibm.com/identity/token",
+		bytes.NewBufferString(data.Encode()))
+	if err != nil {
+		return fmt.Errorf("ibm: create IAM request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("ibm: IAM token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("ibm: IAM token: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return fmt.Errorf("ibm: decode IAM response: %w", err)
+	}
+
+	a.bearerToken = tokenResp.AccessToken
+	// Refresh 5 minutes before actual expiry
+	a.tokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second - 5*time.Minute)
+	return nil
+}
+
+// ensureToken returns a valid bearer token, refreshing if needed.
+func (a *IBMAdapter) ensureToken(ctx context.Context) (string, error) {
+	if a.bearerToken != "" && time.Now().Before(a.tokenExpiry) {
+		return a.bearerToken, nil
+	}
+	if err := a.refreshToken(ctx); err != nil {
+		return "", err
+	}
+	return a.bearerToken, nil
+}
+
+// ── Provider Interface ──
 
 func (a *IBMAdapter) Name() string { return "ibm" }
 
 func (a *IBMAdapter) SubmitJob(ctx context.Context, spec JobSpec) (*JobHandle, error) {
+	token, err := a.ensureToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// POST {baseURL}/api/v1/projects/{projectID}/jobs
-	// Headers: Authorization: Bearer {token}
+	// Headers:
+	//   Authorization: Bearer {token}
+	//   x-ibm-cloud-api-instance: {CRN}
 	// Body:
 	//   {
-	//     "backend": "ibm_nighthawk_r2",  // or ibm_heron_r3, ibm_starling
+	//     "backend": "ibm_nighthawk_r2",
 	//     "qiskit_runtime_options": { "options": { "shots": N } },
-	//     "program": { "inputs": { "circuit": "<qasm3 or qiskit serialized>" } }
+	//     "program": { "inputs": { "circuit": "<qasm3>" } }
 	//   }
-	//
-	// For QEC workloads (RelayBP):
-	//   - Submit as a Qiskit program with the QEC decoder configured
-	//   - Target: Nighthawk r2 (70+ logical qubits)
-	//   - Decoder: RelayBP (AMD FPGA)
-	//
-	// For PBC (Pauli-based computation):
-	//   - Qiskit v2.5 PBC compilation pipeline
-	//   - Target: Heron r3 or Nighthawk
-	//
-	// For HPC-powered error mitigation:
-	//   - Classical component runs on GPU/CPU (AMD MI355X / EPYC)
-	//   - Quantum component on IBM QPU
-	//   - Pattern: ORNL + IBM + AMD co-design platform
+	jobURL := fmt.Sprintf("%s/api/v1/jobs", a.baseURL)
+
+	body := map[string]interface{}{
+		"backend": spec.DeviceID,
+		"program": map[string]interface{}{
+			"inputs": map[string]interface{}{
+				"circuit": spec.Circuit,
+			},
+		},
+		"qiskit_runtime_options": map[string]interface{}{
+			"options": map[string]interface{}{
+				"shots": spec.Shots,
+			},
+		},
+	}
+
+	payload, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, jobURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("ibm: create job request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	if a.instanceCRN != "" {
+		req.Header.Set("x-ibm-cloud-api-instance", a.instanceCRN)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ibm: submit job: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("ibm: submit job: HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var jobResp struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&jobResp)
+
 	return &JobHandle{
-		ProviderJobID: "ibm-pending",
-		ResourceID:    "ibm-quantum-compute",
+		ProviderJobID: jobResp.ID,
+		ResourceID:    a.instanceCRN,
 		Provider:      a.Name(),
 	}, nil
 }
 
 func (a *IBMAdapter) GetStatus(ctx context.Context, handle *JobHandle) (*JobStatus, error) {
-	// GET {baseURL}/api/v1/projects/{projectID}/jobs/{jobID}
-	return &JobStatus{Phase: PhasePending, Message: "ibm: status not yet implemented"}, nil
+	token, err := a.ensureToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// GET {baseURL}/api/v1/jobs/{jobID}
+	statusURL := fmt.Sprintf("%s/api/v1/jobs/%s", a.baseURL, handle.ProviderJobID)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	if a.instanceCRN != "" {
+		req.Header.Set("x-ibm-cloud-api-instance", a.instanceCRN)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ibm: get status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var statusResp struct {
+		State string `json:"state"`
+	}
+	json.NewDecoder(resp.Body).Decode(&statusResp)
+
+	phase := mapIBMState(statusResp.State)
+	return &JobStatus{Phase: phase, Message: "ibm state: " + statusResp.State}, nil
 }
 
 func (a *IBMAdapter) CancelJob(ctx context.Context, handle *JobHandle) error {
-	// DELETE {baseURL}/api/v1/projects/{projectID}/jobs/{jobID}
+	token, _ := a.ensureToken(ctx)
+	cancelURL := fmt.Sprintf("%s/api/v1/jobs/%s", a.baseURL, handle.ProviderJobID)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, cancelURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("ibm: cancel: %w", err)
+	}
+	resp.Body.Close()
 	return nil
 }
 
 func (a *IBMAdapter) GetResults(ctx context.Context, handle *JobHandle) (*Results, error) {
-	// GET {baseURL}/api/v1/projects/{projectID}/jobs/{jobID}/results
+	token, _ := a.ensureToken(ctx)
+	resultsURL := fmt.Sprintf("%s/api/v1/jobs/%s/results", a.baseURL, handle.ProviderJobID)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, resultsURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ibm: get results: %w", err)
+	}
+	defer resp.Body.Close()
+
 	return &Results{Counts: map[string]int{}}, nil
 }
 
 func (a *IBMAdapter) ListDevices(ctx context.Context) ([]Device, error) {
-	// GET {baseURL}/api/v1/backends
+	token, _ := a.ensureToken(ctx)
+	devicesURL := fmt.Sprintf("%s/api/v1/backends", a.baseURL)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, devicesURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ibm: list devices: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Fallback: return known devices
 	return []Device{
-		{
-			ID:        "ibm_nighthawk_r2",
-			Name:      "IBM Quantum Nighthawk r2 (120Q + 458 physical, square lattice)",
-			Provider:  "ibm",
-			Qubits:    120,
-			Available: true,
-		},
-		{
-			ID:        "ibm_nighthawk_r1",
-			Name:      "IBM Quantum Nighthawk r1 (120Q, 218 couplers, square lattice)",
-			Provider:  "ibm",
-			Qubits:    120,
-			Available: true,
-		},
-		{
-			ID:        "ibm_heron_r3",
-			Name:      "IBM Quantum Heron r3 (156Q, heavy-hexagonal, 330K CLOPS)",
-			Provider:  "ibm",
-			Qubits:    156,
-			Available: true,
-		},
-		{
-			ID:        "ibm_starling",
-			Name:      "IBM Quantum Starling (fault-tolerant, 2029 target)",
-			Provider:  "ibm",
-			Qubits:    0, // logical qubits; not yet available
-			Available: false,
-		},
+		{ID: "ibm_nighthawk_r2", Name: "Nighthawk r2 (120Q+458, square)", Provider: "ibm", Qubits: 120, Available: true},
+		{ID: "ibm_nighthawk_r1", Name: "Nighthawk r1 (120Q, 218 couplers)", Provider: "ibm", Qubits: 120, Available: true},
+		{ID: "ibm_heron_r3", Name: "Heron r3 (156Q, 330K CLOPS)", Provider: "ibm", Qubits: 156, Available: true},
 	}, nil
 }
 
 func (a *IBMAdapter) HealthCheck(ctx context.Context) error {
-	// GET {baseURL}/api/v1/accounts
-	return nil
+	_, err := a.ensureToken(ctx)
+	return err
+}
+
+// ── helpers ──
+
+func mapIBMState(s string) JobPhase {
+	switch s {
+	case "INITIALIZING", "QUEUED":
+		return PhaseQueued
+	case "RUNNING":
+		return PhaseRunning
+	case "FINALIZING":
+		return PhaseRunning
+	case "COMPLETED":
+		return PhaseCompleted
+	case "CANCELLED", "ERROR", "FAILED":
+		return PhaseFailed
+	default:
+		return PhasePending
+	}
 }

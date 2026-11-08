@@ -28,24 +28,81 @@
 - **Target**: 100 logical qubits, 100K hard ops by 2028 (DOE Quantum Genesis Mission)
 - Algorithm-aware decoders, hardware-aware compilation, software orchestration
 
-## Authentication
+## IBM Cloud Authentication
 
-### IBM Cloud API Key
+### Step 1: Get an IBM Cloud Account
+
+1. Sign up at [cloud.ibm.com](https://cloud.ibm.com) (free tier available)
+2. Create a **Quantum Compute instance** in the IBM Quantum dashboard
+3. Note your **instance CRN** (Cloud Resource Name) and **region** (`us-east` or `eu-south`)
+4. Create an **API key** from the IBM Cloud dashboard (44-char string)
+
+### Step 2: Store in Kubernetes
 
 ```bash
 kubectl create secret generic ibm-quantum-creds \
-  --from-literal=token=YOUR_IBM_CLOUD_API_KEY \
+  --from-literal=token=YOUR_44_CHAR_API_KEY \
+  --from-literal=instanceCRN=crn:v1:bluemix:quantum-compute:us-east:12345678:instance:abc123 \
+  --from-literal=region=us-east \
   -n quantum-system
 ```
 
-### IBM Quantum Compute Service
+### Step 3: Bearer Token Exchange (automatic)
 
-```yaml
-credential:
-  secretRef:
-    name: ibm-quantum-creds
-    key: token
+The adapter handles this automatically:
+
 ```
+POST https://iam.cloud.ibm.com/identity/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=urn:ibm:params:oauth:grant-type:apikey&apikey=<API_KEY>
+
+→ { "access_token": "<BEARER_TOKEN>", "expires_in": 3600 }
+```
+
+- Bearer tokens expire in **≤ 1 hour**
+- The adapter refreshes automatically 5 minutes before expiry
+- No manual token management needed
+
+### Step 4: API Calls
+
+All Quantum Compute Service calls include:
+
+```
+Authorization: Bearer <token>
+x-ibm-cloud-api-instance: <CRN>
+```
+
+### Reference: Manual Token Generation
+
+```bash
+# Generate a bearer token (for debugging)
+curl -X POST 'https://iam.cloud.ibm.com/identity/token' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'grant_type=urn:ibm:params:oauth:grant-type:apikey&apikey=MY_APIKEY'
+
+# List available backends
+curl -H "Authorization: Bearer $TOKEN" \
+  -H "x-ibm-cloud-api-instance: $CRN" \
+  https://quantum-cloud.ibm.com/api/v1/backends
+```
+
+### Firewall Requirements
+
+Allow outbound HTTPS (443) to:
+- `iam.cloud.ibm.com` (token exchange)
+- `quantum-cloud.ibm.com` (Quantum Compute Service)
+- `*.cloud.ibm.com` (IBM Cloud API)
+
+### IBM Cloud vs On-Prem
+
+| | IBM Cloud | On-Prem (Quantum System) |
+|---|-----------|------------------------|
+| Endpoint | `quantum-cloud.ibm.com` | Local (client infrastructure) |
+| Auth | IAM API key | IAM API key (from onboarding) |
+| Processors | Nighthawk, Heron | Nighthawk r2, Heron r3 |
+| Use Case | Cloud research, production | HPC co-location (ORNL pattern) |
+| Open Plan | ✅ `us-east` region | ❌ |
 
 ## Supported Processors
 

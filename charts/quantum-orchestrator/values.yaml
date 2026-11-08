@@ -36,6 +36,20 @@ transpiler:
       cpu: 500m
       memory: 512Mi
 
+# IBM Cloud configuration (for IBM Quantum workloads)
+ibm:
+  # Region: us-east (default, supports Open Plan) or eu-south
+  region: us-east
+  # Instance CRN (from IBM Cloud dashboard)
+  # instanceCRN: "crn:v1:bluemix:quantum-compute:us-east:12345678:instance:abc123"
+
+# NVIDIA NGC configuration (for CUDA-Q / cuQuantum workloads)
+ngc:
+  # NGC registry pull secret (create with: kubectl create secret docker-registry)
+  imagePullSecret: ngc-pull-secret
+  # NGC image tag: cu13-0.16.0 (stable), cu12-0.14.2, cu13-latest (nightly)
+  imageTag: cu13-0.16.0
+
 # GPU configuration (for NVIDIA CUDA-Q / cuQuantum workloads)
 gpu:
   enabled: false

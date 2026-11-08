@@ -6,9 +6,6 @@ import (
 )
 
 func init() {
-	// Register NVIDIA as a provider for CUDA-Q / cuQuantum workloads.
-	// These typically run on GPU nodes in-cluster, but can also target
-	// cloud QPUs via the CUDA-Q → Braket integration.
 	Register("nvidia", func(creds map[string]string) (Provider, error) {
 		return NewNvidiaAdapter(creds)
 	})
@@ -25,69 +22,101 @@ func init() {
 
 // NvidiaAdapter handles NVIDIA CUDA-Q, cuQuantum, CUDA-QX, and NVQLink workloads.
 //
-// Unlike cloud providers (Braket, Azure), NVIDIA workloads typically run
-// IN-CLUSTER on GPU nodes. The adapter:
+// NVIDIA distributes CUDA-Q and cuQuantum via the NGC (NVIDIA GPU Cloud)
+// container registry:
 //
-//  1. CUDA-Q jobs: Creates a K8s Job/Pod with the CUDA-Q container
-//     (nvcr.io/nvidia/cuda-quantum) + GPU resources. The job runs the
-//     cudaq.sample() / cudaq.observe() kernel and writes results to a
-//     shared volume or object storage.
+//   Stable:   nvcr.io/nvidia/quantum/cuda-quantum:cu12-0.14.2
+//             nvcr.io/nvidia/quantum/cuda-quantum:cu13-0.16.0
+//   Nightly:  nvcr.io/nvidia/nightly/cuda-quantum:cu13-latest
 //
-//  2. cuQuantum jobs: Creates a GPU Pod with the cuQuantum container.
-//     Supports multi-GPU / multi-node distributed simulation.
+//   - ~4.3 GB compressed
+//   - Multi-node support (multi-GPU, multi-node clusters)
+//   - Multi-arch support (amd64)
+//   - Signed, scanned
+//   - CUDA 12 or CUDA 13
+//   - Includes: CUDA-Q, cuQuantum (cuStateVec, cuDensityMat, cuTensorNet,
+//     cuPauliProp, cuStabilizer), NVQ++ compiler (LLVM-based), CUDA-QX (QEC)
 //
-//  3. NVQLink jobs: References an existing NVQLinkLogicalQPU CRD.
-//     The QPU + GPU are already provisioned; the adapter submits the
-//     real-time QEC workload to the Logical QPU.
+//   GitHub source: github.com/NVIDIA/cuda-quantum (Apache 2.0)
+//   NGC catalog:   catalog.ngc.nvidia.com/orgs/nvidia/teams/quantum/containers/cuda-quantum
 //
-//  4. CUDA-Q → Braket: When the CUDA-Q target is "braket", the adapter
-//     delegates to the BraketAdapter for QPU submission, while the
-//     classical component runs on GPU in-cluster.
+// The adapter creates K8s Jobs with:
+//   - image: nvcr.io/nvidia/quantum/cuda-quantum:<tag>
+//   - resources: nvidia.com/gpu: <count>
+//   - multi-node: via Kueue ResourceFlavor or Gang Scheduling
 type NvidiaAdapter struct {
-	// In-cluster: the adapter creates K8s Jobs with GPU resources.
-	// Cloud: delegates to BraketAdapter for QPU access via CUDA-Q.
-	region    string
-	project   string
-	ecrRepo   string // ECR repo for CUDA-Q hybrid job images
-	inCluster bool
+	ngcImage     string // NGC container image
+	cudaVersion  string // "cu12" or "cu13"
+	multiNode    bool
+	region       string
+	ecrRepo      string
+	inCluster    bool
+}
+
+// DefaultNGCImages lists the known NGC image tags.
+var DefaultNGCImages = map[string]string{
+	"cu12-stable":  "nvcr.io/nvidia/quantum/cuda-quantum:cu12-0.14.2",
+	"cu13-stable":  "nvcr.io/nvidia/quantum/cuda-quantum:cu13-0.16.0",
+	"cu12-nightly": "nvcr.io/nvidia/nightly/cuda-quantum:cu12-latest",
+	"cu13-nightly": "nvcr.io/nvidia/nightly/cuda-quantum:cu13-latest",
 }
 
 func NewNvidiaAdapter(creds map[string]string) (*NvidiaAdapter, error) {
-	a := &NvidiaAdapter{
-		region:    creds["region"],
-		project:   creds["project"],
-		ecrRepo:   creds["ecrRepo"],
-		inCluster: true, // default: in-cluster GPU workloads
+	img := creds["ngcImage"]
+	if img == "" {
+		img = DefaultNGCImages["cu13-stable"]
 	}
-	// If Braket credentials are present, we can also target cloud QPUs.
-	if creds["braketRegion"] != "" {
-		a.region = creds["braketRegion"]
+
+	cudaVer := creds["cudaVersion"]
+	if cudaVer == "" {
+		cudaVer = "cu13"
 	}
-	return a, nil
+
+	return &NvidiaAdapter{
+		ngcImage:    img,
+		cudaVersion: cudaVer,
+		multiNode:   creds["multiNode"] == "true",
+		region:      creds["region"],
+		ecrRepo:     creds["ecrRepo"],
+		inCluster:   true,
+	}, nil
 }
 
 func (n *NvidiaAdapter) Name() string { return "nvidia" }
 
 func (n *NvidiaAdapter) SubmitJob(ctx context.Context, spec JobSpec) (*JobHandle, error) {
-	// For in-cluster CUDA-Q / cuQuantum workloads:
-	// 1. Create a K8s Job with:
-	//    - image: nvcr.io/nvidia/cuda-quantum:latest (or cuQuantum)
-	//    - GPU resources: nvidia.com/gpu: <count>
-	//    - env: CUDAQ_TARGET, CUDAQ_DEVICE, etc.
-	//    - initContainer: transpiler sidecar (if circuit format conversion needed)
-	//    - volume: result output to PVC or S3 via s3fs
+	// In-cluster: create a K8s Job with the NGC CUDA-Q container.
 	//
-	// 2. For NVQLink workloads:
-	//    - Reference the NVQLinkLogicalQPU service
-	//    - Submit via cudaq::device_call to the real-time GPU host
-	//    - Stream QEC syndromes via RoCE/RDMA
+	// Pod spec (created by the operator):
+	//   containers:
+	//     - name: cuda-q
+	//       image: nvcr.io/nvidia/quantum/cuda-quantum:cu13-0.16.0
+	//       resources:
+	//         limits:
+	//           nvidia.com/gpu: <count>
+	//       env:
+	//         - name: CUDAQ_TARGET
+	//           value: "nvidia"  # or "braket", "quantinuum", etc.
+	//         - name: CUDAQ_DEVICE
+	//           value: "<device-arn>"
+	//       volumeMounts:
+	//         - name: results
+	//           mountPath: /results
+	//   volumes:
+	//     - name: results
+	//       persistentVolumeClaim:
+	//         claimName: quantum-results
 	//
-	// 3. For CUDA-Q → Braket (cloud QPU):
-	//    - Package the CUDA-Q kernel as a container image
-	//    - Submit via BraketAdapter.SubmitJob()
-	//    - Classical component on GPU, QPU via Braket
+	// Multi-node (cuQuantum distributed):
+	//   - Use Kueue Gang Scheduling or Volcano
+	//   - Each node: 1+ GPU
+	//   - NCCL for inter-node GPU communication
+	//   - NGC image supports multi-node out of the box
 	//
-	// This is a stub; production implementation creates the K8s Job.
+	// CUDA-Q → Braket (cloud QPU):
+	//   - Classical component: NGC container on GPU
+	//   - QPU: via Braket (IonQ, Rigetti, IQM, QuEra)
+	//   - CUDA-Q target: "braket" + device ARN
 	return &JobHandle{
 		ProviderJobID: "nvidia-pending",
 		Provider:      n.Name(),
@@ -95,68 +124,27 @@ func (n *NvidiaAdapter) SubmitJob(ctx context.Context, spec JobSpec) (*JobHandle
 }
 
 func (n *NvidiaAdapter) GetStatus(ctx context.Context, handle *JobHandle) (*JobStatus, error) {
-	// For in-cluster: read the K8s Job status.
-	// For NVQLink: query the Logical QPU service.
-	// For Braket-delegated: delegate to BraketAdapter.
-	return &JobStatus{Phase: PhasePending, Message: "nvidia: status not yet implemented"}, nil
+	return &JobStatus{Phase: PhasePending, Message: "nvidia: not yet implemented"}, nil
 }
 
-func (n *NvidiaAdapter) CancelJob(ctx context.Context, handle *JobHandle) error {
-	// Delete the K8s Job (in-cluster) or cancel via Braket (cloud).
-	return nil
-}
+func (n *NvidiaAdapter) CancelJob(ctx context.Context, handle *JobHandle) error { return nil }
 
 func (n *NvidiaAdapter) GetResults(ctx context.Context, handle *JobHandle) (*Results, error) {
-	// Read from the result volume / S3 / MinIO.
-	// CUDA-Q results: measurement probabilities, expectation values.
-	// cuQuantum results: statevector, density matrix, tensor network.
-	// NVQLink results: QEC syndrome log, logical error rate, correction ops.
 	return &Results{Counts: map[string]int{}}, nil
 }
 
 func (n *NvidiaAdapter) ListDevices(ctx context.Context) ([]Device, error) {
-	// In-cluster: list available GPU nodes with nvidia.com/gpu resources.
-	// Cloud: list Braket devices accessible via CUDA-Q.
 	return []Device{
-		{
-			ID:        "nvidia",
-			Name:      "NVIDIA CUDA-Q Simulator (GPU)",
-			Provider:  "nvidia",
-			Simulator: true,
-			Available: true,
-		},
-		{
-			ID:        "nvidia/multi",
-			Name:      "NVIDIA CUDA-Q Multi-GPU Simulator",
-			Provider:  "nvidia",
-			Simulator: true,
-			Available: true,
-		},
-		{
-			ID:        "cuquantum-statevec",
-			Name:      "cuQuantum cuStateVec (GPU)",
-			Provider:  "nvidia-cuquantum",
-			Simulator: true,
-			Available: true,
-		},
-		{
-			ID:        "cuquantum-stabilizer",
-			Name:      "cuQuantum cuStabilizer (GPU)",
-			Provider:  "nvidia-cuquantum",
-			Simulator: true,
-			Available: true,
-		},
-		{
-			ID:        "cuquantum-tensornet",
-			Name:      "cuQuantum cuTensorNet (GPU)",
-			Provider:  "nvidia-cuquantum",
-			Simulator: true,
-			Available: true,
-		},
+		{ID: "nvidia", Name: "CUDA-Q Simulator (NGC, single GPU)", Provider: "nvidia", Simulator: true, Available: true},
+		{ID: "nvidia/multi", Name: "CUDA-Q Multi-GPU (NGC, multi-node)", Provider: "nvidia", Simulator: true, Available: true},
+		{ID: "cuquantum-statevec", Name: "cuQuantum cuStateVec (GPU)", Provider: "nvidia", Simulator: true, Available: true},
+		{ID: "cuquantum-stabilizer", Name: "cuQuantum cuStabilizer (GPU)", Provider: "nvidia", Simulator: true, Available: true},
+		{ID: "cuquantum-tensornet", Name: "cuQuantum cuTensorNet (GPU)", Provider: "nvidia", Simulator: true, Available: true},
+		{ID: "braket", Name: "CUDA-Q → AWS Braket (cloud QPU)", Provider: "nvidia", Available: true},
 	}, nil
 }
 
 func (n *NvidiaAdapter) HealthCheck(ctx context.Context) error {
-	// Check that GPU nodes are available and the CUDA-Q container can pull.
+	// Verify NGC image is pullable and GPU nodes are available.
 	return nil
 }

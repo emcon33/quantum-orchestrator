@@ -192,13 +192,94 @@ cuQuantum integrates with (zero code changes):
 - ExaTN
 - AWS Braket
 
-## Container Images
+## NVIDIA NGC Container Library
 
-| Image | Contents |
-|-------|----------|
-| `nvcr.io/nvidia/cuda-quantum:latest` | CUDA-Q + cuQuantum + CUDA-QX |
-| `ghcr.io/quantum-orchestrator/notebook-nvidia:latest` | CUDA-Q + cuQuantum + Jupyter |
-| `ghcr.io/quantum-orchestrator/notebook-nvidia-qec:latest` | CUDA-QX + stim + pymatching + Jupyter |
+NVIDIA distributes CUDA-Q and cuQuantum via the **NGC (NVIDIA GPU Cloud)**
+container registry. All containers are signed, scanned, and support multi-node.
+
+### Available Images
+
+| Image | Tag | CUDA | Size | Notes |
+|-------|-----|------|------|-------|
+| `nvcr.io/nvidia/quantum/cuda-quantum` | `cu13-0.16.0` | CUDA 13 | ~4.3 GB | **Latest stable** |
+| `nvcr.io/nvidia/quantum/cuda-quantum` | `cu12-0.14.2` | CUDA 12 | ~4.3 GB | CUDA 12 compatible |
+| `nvcr.io/nvidia/nightly/cuda-quantum` | `cu13-latest` | CUDA 13 | ~4.3 GB | Nightly / pre-release |
+| `ghcr.io/quantum-orchestrator/notebook-nvidia` | `latest` | — | — | Jupyter + CUDA-Q + cuQuantum |
+| `ghcr.io/quantum-orchestrator/notebook-nvidia-qec` | `latest` | — | — | Jupyter + CUDA-QX + stim |
+
+### Container Contents
+
+The NGC `cuda-quantum` image includes:
+
+- **CUDA-Q**: Quantum SDK (C++ + Python), NVQ++ compiler (LLVM-based)
+- **cuQuantum**: cuStateVec, cuDensityMat, cuTensorNet, cuPauliProp, cuStabilizer
+- **CUDA-QX**: QEC decoders (BP+OSD, tensor-network, nv-qldpc)
+- **Framework integrations**: Qiskit, Cirq, PennyLane, Qibo, QuTiP, TKET, Torch Quantum, XACC
+- **Multi-node**: Yes (NCCL-based multi-GPU / multi-node)
+- **Multi-arch**: amd64
+
+### Pulling the Image
+
+```bash
+# 1. Register at developer.nvidia.com/ngc (free)
+# 2. Log in to NGC
+docker login nvcr.io
+#    Username: $oauthtoken (or your NGC user)
+#    Password: <NGC API key>
+
+# 3. Pull the stable image (CUDA 13)
+docker pull nvcr.io/nvidia/quantum/cuda-quantum:cu13-0.16.0
+
+# 4. Run with GPU
+docker run --gpus all -it nvcr.io/nvidia/quantum/cuda-quantum:cu13-0.16.0
+```
+
+### In Kubernetes
+
+```bash
+# Create a pull secret for NGC
+kubectl create secret docker-registry ngc-pull-secret \
+  --docker-server=nvcr.io \
+  --docker-username=$NGC_USER \
+  --docker-password=$NGC_KEY \
+  -n quantum-system
+```
+
+```yaml
+# The operator uses this in the Pod spec:
+spec:
+  imagePullSecrets:
+    - name: ngc-pull-secret
+  containers:
+    - name: cuda-q
+      image: nvcr.io/nvidia/quantum/cuda-quantum:cu13-0.16.0
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+```
+
+### Multi-Node GPU (cuQuantum Distributed)
+
+```yaml
+nvidia:
+  cuQuantum:
+    engine: statevec
+    gpus: 4        # 4 GPUs per node
+    nodes: 2       # 2 nodes → 8 GPUs total
+    maxQubits: 35
+  gpu:
+    model: h100
+    count: 4
+```
+
+The NGC image supports multi-node out of the box. Use Kueue Gang Scheduling
+or Volcano for co-scheduling across nodes. NCCL handles inter-node GPU communication.
+
+### Source Code
+
+- **GitHub**: [github.com/NVIDIA/cuda-quantum](https://github.com/NVIDIA/cuda-quantum) (Apache 2.0)
+- **NGC Catalog**: [catalog.ngc.nvidia.com](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/quantum/containers/cuda-quantum)
+- **Docs**: [nvidia.github.io/cuda-quantum](https://nvidia.github.io/cuda-quantum/latest/)
 
 ## References
 
